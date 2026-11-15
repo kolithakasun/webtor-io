@@ -1,0 +1,49 @@
+# All-in-one Webtor. One container runs nginx, the platform services,
+# PostgreSQL, Redis, the embedded S3 store and NATS.
+#
+#   docker compose up -d
+#   open http://localhost:8080
+#
+# Override the image with WEBTOR_IMAGE (a local build is
+# `docker build -t webtor-self-hosted:assembly .`). Other settings go in a
+# `.env` file next to this one, or in the shell. See README.md.
+
+services:
+  webtor:
+    image: ${WEBTOR_IMAGE:-ghcr.io/webtor-io/self-hosted:latest}
+    container_name: webtor
+    restart: always
+    ports:
+      - "${WEBTOR_PORT:-8080}:8080"
+    environment:
+      # Address you open in the browser. Stream and download links are built
+      # from it, and an https value makes the session cookie Secure.
+      DOMAIN: ${DOMAIN:-http://localhost:${WEBTOR_PORT:-8080}}
+      # Empty leaves the instance open. Set one to require a login.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # 64 hex chars (`openssl rand -hex 32`). Without it the key is generated
+      # inside the container and lost on every recreate, which makes private
+      # torrents unreadable.
+      PRIVATE_TRACKERS_KEY: ${PRIVATE_TRACKERS_KEY:-}
+      # Pin both to keep S3 credentials across image upgrades. Empty lets the
+      # container generate a pair that does not survive a recreate.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    volumes:
+      - data:/data
+      - pgdata:/pgdata
+      - storage:/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  data:
+  pgdata:
+  # Keep this a named volume. The embedded S3 store keeps object metadata in
+  # filesystem extended attributes, and a bind mount from macOS or Windows
+  # does not support them. See README, Storage Layout.
+  storage:
